@@ -1,0 +1,7 @@
+defaults:
+  - override hydra/launcher: slurm_rich
+hydra:
+  launcher:
+    partition: ${oc.env:HYDRA_SLURM_PARTITION,'cpu_normal'}
+    timeout_min: 5
+task: 1

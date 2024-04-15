@@ -1,0 +1,26 @@
+[tool.poetry]
+name = "hydra-slurm-rich-launcher"
+version = "1.0.0"
+description = "A rich, visual interface for easily starting and monitoring your Hydra applications on SLURM clusters"
+authors = [
+    "Christoph Reinders <reinders@tnt.uni-hannover.de>",
+    "Frederik Schubert <schubert@tnt.uni-hannover.de>"
+]
+readme = "README.md"
+homepage = "https://github.com/creinders/hydra-slurm-rich-launcher"
+keywords = ["hydra", "slurm", "rich", "launcher", "command-line", "cli", "scheduler", "monitoring", "visualization"]
+license = "MIT"
+packages = [
+    { include = "hydra_plugins/hydra_slurm_rich_launcher"}
+]
+
+[tool.poetry.dependencies]
+python = "^3.9"
+hydra-core = ">=1.1.0"
+submitit = "^1.3.3"
+rich = ">=11.0.0"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
