@@ -15,7 +15,7 @@ from hydra.plugins.launcher import Launcher
 from hydra.types import HydraContext, TaskFunction
 from omegaconf import DictConfig, OmegaConf, open_dict
 
-from hydra_plugins.hydra_slurm_rich_launcher.utils import get_common_overrides
+from hydra_plugins.hydra_slurm_rich_launcher.utils import get_common_overrides, ask_cancel_jobs
 
 from .config import BaseQueueConf
 from rich.prompt import Confirm
@@ -180,7 +180,6 @@ class BaseSlurmRichLauncher(Launcher):
         results_failed = []
         missing_job_ids = job_ids if not filter_job_ids else filter_job_ids
 
-        retry_idx = 0
         for retry_idx in range(self.params["max_retries"] + 1):
             job_overrides_filtered = [overrides for job_id, overrides in zip(job_ids, job_overrides) if job_id in missing_job_ids]
             common_overrides = get_common_overrides(job_overrides_filtered) if len(job_overrides_filtered) > 1 else []
@@ -227,7 +226,12 @@ class BaseSlurmRichLauncher(Launcher):
         from ._progress_handler import InteractiveProgressHandler
 
         progress_handler = InteractiveProgressHandler(le_mode=le_mode)
-        progress_handler.loop(job_idx, jobs, job_overrides, slurm_query_interval_s=self.params["slurm_query_interval_s"], common_overrides=common_overrides)
+
+        try:
+            progress_handler.loop(job_idx, jobs, job_overrides, slurm_query_interval_s=self.params["slurm_query_interval_s"], common_overrides=common_overrides)
+        except KeyboardInterrupt:
+            ask_cancel_jobs(jobs)
+            raise
          
         return [InteractiveProgressHandler.get_job_result(j) for j in jobs]
 
