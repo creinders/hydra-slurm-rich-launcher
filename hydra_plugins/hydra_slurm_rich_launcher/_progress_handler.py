@@ -38,6 +38,7 @@ _get_time = lambda: datetime.now().timestamp()
 
 log = logging.getLogger(__name__)
 
+
 @dataclass
 class TaskInfo:
     job_idx: int
@@ -213,7 +214,7 @@ class InteractiveProgressHandler:
             slurm_query_interval_s = 15
 
         if slurm_query_interval_s < 15:
-            log.warn('WARNING: slurm_query_interval_s should not be smaller than 15 seconds otherwise slurm will be queried too often')
+            log.warning('WARNING: slurm_query_interval_s should not be smaller than 15 seconds otherwise slurm will be queried too often')
 
         self.start()
         while True:
@@ -258,14 +259,14 @@ class InteractiveProgressHandler:
                         task_status = Status.UNKNOWN
 
                 except:
-                        task_status = Status.FAILED
+                    task_status = Status.FAILED
             elif state == 'RUNNING':
                 task_status = Status.RUNNING
             elif state == 'PENDING':
                 task_status = Status.PENDING
             elif state == 'CONFIGURING':
                 task_status = Status.CONFIGURING
-            elif state == 'UNKNOWN': # job needs some time until it is visible in slurm controler
+            elif state == 'UNKNOWN':  # job needs some time until it is visible in slurm controller
                 task_status = Status.PENDING
             else:
                 task_status = Status.UNKNOWN

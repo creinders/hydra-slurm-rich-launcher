@@ -230,9 +230,10 @@ class BaseSlurmRichLauncher(Launcher):
         try:
             progress_handler.loop(job_idx, jobs, job_overrides, slurm_query_interval_s=self.params["slurm_query_interval_s"], common_overrides=common_overrides)
         except KeyboardInterrupt:
+            progress_handler.live.stop()
             ask_cancel_jobs(jobs)
-            raise
-         
+            exit(1)
+
         return [InteractiveProgressHandler.get_job_result(j) for j in jobs]
 
 

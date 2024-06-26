@@ -1,4 +1,6 @@
 multirun/
+outputs/
+.idea/
 .vscode
 
 # Byte-compiled / optimized / DLL files
