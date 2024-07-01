@@ -20,8 +20,8 @@ def get_common_overrides(job_overrides: Sequence[Sequence[str]]):
 
 def ask_cancel_jobs(jobs: Sequence[Job]) -> list[Job]:
     cancel_jobs = Prompt.ask(
-        "Do you want to cancel jobs? ([cyan]\[n][/cyan]o, [red]\[a][/red]ll, [yellow]\[p][/yellow]ending, [green]\[r][/green]unning)",
-        choices=["a", "p", "n", "r"], show_choices=False,  # Choices are shown in prompt
+        "Do you want to cancel jobs? ([green]\[n][/green]o, [red]\[a][/red]ll, [yellow]\[p][/yellow]ending)",
+        choices=["a", "p", "n"], show_choices=False,  # Choices are shown in prompt
         default="n", show_default=True
     )
     if cancel_jobs == "n":
@@ -40,7 +40,7 @@ def ask_cancel_jobs(jobs: Sequence[Job]) -> list[Job]:
     if cancel_jobs in ["a", "p"]:
         jobs_to_cancel += pending_jobs
 
-    if cancel_jobs in ["a", "r"]:
+    if cancel_jobs in ["a"]:
         jobs_to_cancel += running_jobs
 
     print(f"Canceling {len(jobs_to_cancel)} jobs")
