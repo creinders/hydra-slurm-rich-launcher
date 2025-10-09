@@ -158,11 +158,28 @@ class BaseSlurmRichLauncher(Launcher):
 
         job_ids = [initial_job_idx + i for i in range(len(job_overrides))]
         job_params: List[Any] = []
-        filter_job_ids = [int(idx) for idx in self.params["filter_job_ids"].split(
-            ",")] if isinstance(self.params["filter_job_ids"], str) else None
+        filter_job_ids = None
+        raw_filter_job_ids = self.params.get("filter_job_ids")
+        if isinstance(raw_filter_job_ids, str):
+            filter_job_ids_set = set()
+            for item in raw_filter_job_ids.split(","):
+                item = item.strip()
+                if not item:
+                    continue
+                if "-" in item:
+                    parts = item.split("-")
+                    if len(parts) != 2:
+                        raise ValueError(
+                            f"Invalid filter job id range: {item}, use format <start>-<end> separated by , for multiple ranges"
+                        )
+                    start, end = int(parts[0]), int(parts[1])
+                    filter_job_ids_set.update(range(start, end + 1))
+                else:
+                    filter_job_ids_set.add(int(item))
+            filter_job_ids = sorted(
+                filter_job_ids_set) if filter_job_ids_set else None
         if filter_job_ids:
-            log.info(
-                f"Filtering out {len(filter_job_ids)} job IDs from {len(job_ids)} total jobs")
+            log.info(f"Excluding {len(filter_job_ids)} of {len(job_ids)} jobs")
         for idx, overrides in zip(job_ids, job_overrides):
             job_params.append(
                 (
@@ -174,23 +191,16 @@ class BaseSlurmRichLauncher(Launcher):
                 )
             )
 
-        # Filter out the specified job IDs instead of running them exclusively
-        if filter_job_ids:
-            filtered_job_ids = [
-                job_id for job_id in job_ids if job_id not in filter_job_ids]
-            log.info(
-                f"Executing {len(filtered_job_ids)} of {len(job_ids)} jobs (filtered out: {filter_job_ids})")
-        else:
-            filtered_job_ids = job_ids
-            log.info("Executing all {} jobs".format(len(job_ids)))
-
-        n_jobs = len(filtered_job_ids)
+        # Calculate jobs to execute: all jobs except those in filter_job_ids
+        jobs_to_execute = [
+            job_id for job_id in job_ids if job_id not in (filter_job_ids or [])]
+        n_jobs = len(jobs_to_execute)
         log.info("Starting {} {}".format(
             n_jobs, 'jobs' if n_jobs > 1 else 'job'))
 
         results_completed = []
         results_failed = []
-        missing_job_ids = filtered_job_ids
+        missing_job_ids = jobs_to_execute
 
         for retry_idx in range(self.params["max_retries"] + 1):
             job_overrides_filtered = [overrides for job_id, overrides in zip(
@@ -220,8 +230,8 @@ class BaseSlurmRichLauncher(Launcher):
                         f"Job {job_id} failed with the following error: ", exc_info=ex)
                     log.error(''.join(traceback.format_exception(
                         type(ex), value=ex, tb=ex.__traceback__)))
-                log.info("To manually retry only the failed jobs, you would need to exclude all other jobs using: 'hydra.launcher.filter_job_ids=\"{}\"'".format(
-                    ",".join([str(i) for i in set(job_ids) - set(job_ids_failed)])))
+                log.info("To manually retry the failed jobs, add the following overrides to your command: 'hydra.launcher.filter_job_ids=\"{}\"'".format(
+                    ",".join([str(i) for i in job_ids_failed])))
                 if self.params["retry_strategy"] == "never" or retry_idx == self.params["max_retries"]:
                     break
                 elif self.params["retry_strategy"] == "always":
