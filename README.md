@@ -79,7 +79,8 @@ Easily monitor the status of your jobs and swiftly restart any failed runs.
 The Hydra Slurm Rich Launcher has the following parameters.
 ```yaml
 slurm_query_interval_s: 15 #  Query update interval from SLURM controller
-filter_job_ids: null # Filter specific jobs from the job array that should not be executed. Supports individual IDs (e.g., "1,4,7"), ranges (e.g., "1-5"), or mixed (e.g., "1,3-5,7")
+exclude_job_ids: null # Filter specific jobs from the job array that should not be executed. Supports individual IDs (e.g., "1,4,7"), ranges (e.g., "1-5"), or mixed (e.g., "1,3-5,7")
+filter_job_ids: null # Like exclude_job_ids, but only runs the jobs in the list.
 retry_strategy: 'prompt'  # Defines job retry strategy. 'prompt': will ask the user, 'never': never restarts, and 'always': restarts the runs automatically
 max_retries: 3 # Maximum retry attempts
 le_mode: 'auto'  # Low energy mode settings. The low energy mode disables all animations and can be turned on if the cpu-usage must be minimized. Values are: 'on', 'off', and 'auto'. 'auto' will turn on the low energy mode if the environment variable HYDRA_SLURM_PROGRESS_LE_MODE is set.

@@ -97,6 +97,24 @@ class BaseSlurmRichLauncher(Launcher):
 
         return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
 
+    def _parse_job_id_ranges(self, job_ids_str: str) -> set[int]:
+        job_ids_set = set()
+        for item in job_ids_str.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if "-" in item:
+                parts = item.split("-")
+                if len(parts) != 2:
+                    raise ValueError(
+                        f"Invalid job id range: {item}, use format <start>-<end> separated by , for multiple ranges"
+                    )
+                start, end = int(parts[0]), int(parts[1])
+                job_ids_set.update(range(start, end + 1))
+            else:
+                job_ids_set.add(int(item))
+        return job_ids_set
+
     def launch(
         self, job_overrides: Sequence[Sequence[str]], initial_job_idx: int
     ) -> Sequence[JobReturn]:
@@ -159,27 +177,17 @@ class BaseSlurmRichLauncher(Launcher):
         job_ids = [initial_job_idx + i for i in range(len(job_overrides))]
         job_params: List[Any] = []
         filter_job_ids = None
-        raw_filter_job_ids = self.params.get("filter_job_ids")
-        if isinstance(raw_filter_job_ids, str):
-            filter_job_ids_set = set()
-            for item in raw_filter_job_ids.split(","):
-                item = item.strip()
-                if not item:
-                    continue
-                if "-" in item:
-                    parts = item.split("-")
-                    if len(parts) != 2:
-                        raise ValueError(
-                            f"Invalid filter job id range: {item}, use format <start>-<end> separated by , for multiple ranges"
-                        )
-                    start, end = int(parts[0]), int(parts[1])
-                    filter_job_ids_set.update(range(start, end + 1))
-                else:
-                    filter_job_ids_set.add(int(item))
-            filter_job_ids = sorted(
-                filter_job_ids_set) if filter_job_ids_set else None
-        if filter_job_ids:
-            log.info(f"Excluding {len(filter_job_ids)} of {len(job_ids)} jobs")
+        raw_filter_job_ids = self.params.get("filter_job_ids", None)
+        raw_exclude_job_ids = self.params.get("exclude_job_ids", None)
+
+        if raw_filter_job_ids:
+            filter_job_ids = self._parse_job_id_ranges(raw_filter_job_ids)
+            job_ids = [job_id for job_id in job_ids if job_id in filter_job_ids]
+        # exclude job ids
+        if raw_exclude_job_ids:
+            excluded_jobs_set = self._parse_job_id_ranges(raw_exclude_job_ids)
+            job_ids = [job_id for job_id in job_ids if job_id not in excluded_jobs_set]
+
         for idx, overrides in zip(job_ids, job_overrides):
             job_params.append(
                 (
@@ -191,16 +199,13 @@ class BaseSlurmRichLauncher(Launcher):
                 )
             )
 
-        # Calculate jobs to execute: all jobs except those in filter_job_ids
-        jobs_to_execute = [
-            job_id for job_id in job_ids if job_id not in (filter_job_ids or [])]
-        n_jobs = len(jobs_to_execute)
+        n_jobs = len(job_ids)
         log.info("Starting {} {}".format(
             n_jobs, 'jobs' if n_jobs > 1 else 'job'))
 
         results_completed = []
         results_failed = []
-        missing_job_ids = jobs_to_execute
+        missing_job_ids = job_ids
 
         for retry_idx in range(self.params["max_retries"] + 1):
             job_overrides_filtered = [overrides for job_id, overrides in zip(
