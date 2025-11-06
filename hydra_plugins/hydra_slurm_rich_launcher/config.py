@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. 
+# Copyright (c) Facebook, Inc. and its affiliates.
 # Copyright (c) 2024 Christoph Reinders and Frederik Schubert
 # All Rights Reserved
 from dataclasses import dataclass, field
@@ -35,6 +35,7 @@ class BaseQueueConf:
 class RichQueueConf(BaseQueueConf):
     # Additional parameters
     slurm_query_interval_s: int = 15
+    exclude_job_ids: Optional[str] = None
     filter_job_ids: Optional[str] = None
     max_retries: int = 3
     retry_strategy: str = 'prompt'  # 'prompt', 'never', 'always'

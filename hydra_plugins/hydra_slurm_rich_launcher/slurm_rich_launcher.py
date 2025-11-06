@@ -1,4 +1,4 @@
-# Copyright (c) Facebook, Inc. and its affiliates. 
+# Copyright (c) Facebook, Inc. and its affiliates.
 # Copyright (c) 2024 Christoph Reinders and Frederik Schubert
 # All Rights Reserved
 import atexit
@@ -88,7 +88,6 @@ class BaseSlurmRichLauncher(Launcher):
         if ret.status == JobStatus.FAILED:
             # log error because its catched and not printed to job-log
             print(ret._return_value, file=sys.stderr)
-            
         return ret
 
     def checkpoint(self, *args: Any, **kwargs: Any) -> Any:
@@ -97,6 +96,24 @@ class BaseSlurmRichLauncher(Launcher):
         import submitit
 
         return submitit.helpers.DelayedSubmission(self, *args, **kwargs)
+
+    def _parse_job_id_ranges(self, job_ids_str: str) -> set[int]:
+        job_ids_set = set()
+        for item in job_ids_str.split(","):
+            item = item.strip()
+            if not item:
+                continue
+            if "-" in item:
+                parts = item.split("-")
+                if len(parts) != 2:
+                    raise ValueError(
+                        f"Invalid job id range: {item}, use format <start>-<end> separated by , for multiple ranges"
+                    )
+                start, end = int(parts[0]), int(parts[1])
+                job_ids_set.update(range(start, end + 1))
+            else:
+                job_ids_set.add(int(item))
+        return job_ids_set
 
     def launch(
         self, job_overrides: Sequence[Sequence[str]], initial_job_idx: int
@@ -112,13 +129,15 @@ class BaseSlurmRichLauncher(Launcher):
         # build executor
         init_params = {"folder": self.params["submitit_folder"]}
         specific_init_keys = {"max_num_timeout"}
-        additional_keys = ["slurm_query_interval_s", "filter_job_ids", "max_retries", "retry_strategy", "le_mode"]
+        additional_keys = ["slurm_query_interval_s", "filter_job_ids",
+                           "exclude_job_ids", "max_retries", "retry_strategy",
+                           "le_mode"]
 
         init_params.update(
             **{
                 f"{self._EXECUTOR}_{x}": y
                 for x, y in params.items()
-                if x in specific_init_keys and not x in additional_keys
+                if x in specific_init_keys and x not in additional_keys
             }
         )
         init_keys = specific_init_keys | {"submitit_folder"}
@@ -133,11 +152,11 @@ class BaseSlurmRichLauncher(Launcher):
         }
         executor.update_parameters(**params)
 
-        
         if self.params["le_mode"] == 'auto':
             le_mode = False
             if "HYDRA_SLURM_PROGRESS_LE_MODE" in os.environ:
-                le_mode = os.environ['HYDRA_SLURM_PROGRESS_LE_MODE'] in ('y', 'yes', 't', 'true', 'True', 'on', '1')
+                le_mode = os.environ['HYDRA_SLURM_PROGRESS_LE_MODE'] in (
+                    'y', 'yes', 't', 'true', 'True', 'on', '1')
 
         else:
             assert self.params["le_mode"] in ['off', 'on']
@@ -150,7 +169,6 @@ class BaseSlurmRichLauncher(Launcher):
 
         if le_mode:
             log.info('Running progress visualization in low energy mode')
-        
         sweep_dir = Path(str(self.config.hydra.sweep.dir))
         sweep_dir.mkdir(parents=True, exist_ok=True)
         if "mode" in self.config.hydra.sweep:
@@ -159,9 +177,18 @@ class BaseSlurmRichLauncher(Launcher):
 
         job_ids = [initial_job_idx + i for i in range(len(job_overrides))]
         job_params: List[Any] = []
-        filter_job_ids = [int(idx) for idx in self.params["filter_job_ids"].split(",")] if isinstance(self.params["filter_job_ids"], str) else None
-        if filter_job_ids:
-            log.info(f"Only executing {len(filter_job_ids)} of {len(job_ids)} jobs")
+        filter_job_ids = None
+        raw_filter_job_ids = self.params.get("filter_job_ids", None)
+        raw_exclude_job_ids = self.params.get("exclude_job_ids", None)
+
+        if raw_filter_job_ids:
+            filter_job_ids = self._parse_job_id_ranges(raw_filter_job_ids)
+            job_ids = [job_id for job_id in job_ids if job_id in filter_job_ids]
+        # exclude job ids
+        if raw_exclude_job_ids:
+            excluded_jobs_set = self._parse_job_id_ranges(raw_exclude_job_ids)
+            job_ids = [job_id for job_id in job_ids if job_id not in excluded_jobs_set]
+
         for idx, overrides in zip(job_ids, job_overrides):
             job_params.append(
                 (
@@ -172,38 +199,52 @@ class BaseSlurmRichLauncher(Launcher):
                     Singleton.get_state(),
                 )
             )
-        
-        n_jobs = len(job_params) if not filter_job_ids else len(filter_job_ids)
-        log.info("Starting {} {}".format(n_jobs, 'jobs' if n_jobs > 1 else 'job'))
+
+        n_jobs = len(job_ids)
+        log.info("Starting {} {}".format(
+            n_jobs, 'jobs' if n_jobs > 1 else 'job'))
 
         results_completed = []
         results_failed = []
-        missing_job_ids = job_ids if not filter_job_ids else filter_job_ids
+        missing_job_ids = job_ids
 
         for retry_idx in range(self.params["max_retries"] + 1):
-            job_overrides_filtered = [overrides for job_id, overrides in zip(job_ids, job_overrides) if job_id in missing_job_ids]
-            common_overrides = get_common_overrides(job_overrides_filtered) if len(job_overrides_filtered) > 1 else []
+            job_overrides_filtered = [overrides for job_id, overrides in zip(
+                job_ids, job_overrides) if job_id in missing_job_ids]
+            common_overrides = get_common_overrides(
+                job_overrides_filtered) if len(job_overrides_filtered) > 1 else []
             if common_overrides:
-                log.info("Common overrides: {}".format(" ".join(common_overrides)))
-            job_params_filtered = [job_param for job_id, job_param in zip(job_ids, job_params) if job_id in missing_job_ids]
+                log.info("Common overrides: {}".format(
+                    " ".join(common_overrides)))
+            job_params_filtered = [job_param for job_id, job_param in zip(
+                job_ids, job_params) if job_id in missing_job_ids]
 
-            results = self.execute_jobs(executor, missing_job_ids, job_overrides_filtered, job_params_filtered, common_overrides=common_overrides, le_mode=le_mode)
-            job_ids_failed = [i for i, r in zip(missing_job_ids, results) if r.status == JobStatus.FAILED]
-            results_completed.extend([r for r in results if r.status == JobStatus.COMPLETED])
-            results_failed = [r for r, job_id in zip(results, missing_job_ids) if job_id in job_ids_failed]
+            results = self.execute_jobs(executor, missing_job_ids, job_overrides_filtered,
+                                        job_params_filtered, common_overrides=common_overrides, le_mode=le_mode)
+            job_ids_failed = [i for i, r in zip(
+                missing_job_ids, results) if r.status == JobStatus.FAILED]
+            results_completed.extend(
+                [r for r in results if r.status == JobStatus.COMPLETED])
+            results_failed = [r for r, job_id in zip(
+                results, missing_job_ids) if job_id in job_ids_failed]
             if job_ids_failed:
-                log.warning("Retry {}/{}: {} jobs failed".format(retry_idx, self.params["max_retries"], len(job_ids_failed)))
+                log.warning("Retry {}/{}: {} jobs failed".format(retry_idx,
+                            self.params["max_retries"], len(job_ids_failed)))
                 for result, job_id in zip(results_failed, missing_job_ids):
                     ex = result._return_value
-                    log.error(f"Job {job_id} failed with the following error: ", exc_info=ex)
-                    log.error(''.join(traceback.format_exception(type(ex), value=ex, tb=ex.__traceback__)))
-                log.info("To manually retry the failed jobs, add the following overrides to your command: 'hydra.launcher.filter_job_ids=\"{}\"'".format(",".join([str(i) for i in job_ids_failed]))) 
+                    log.error(
+                        f"Job {job_id} failed with the following error: ", exc_info=ex)
+                    log.error(''.join(traceback.format_exception(
+                        type(ex), value=ex, tb=ex.__traceback__)))
+                log.info("To manually retry the failed jobs, add the following overrides to your command: 'hydra.launcher.filter_job_ids=\"{}\"'".format(
+                    ",".join([str(i) for i in job_ids_failed])))
                 if self.params["retry_strategy"] == "never" or retry_idx == self.params["max_retries"]:
                     break
                 elif self.params["retry_strategy"] == "always":
                     pass
                 elif self.params["retry_strategy"] == "prompt":
-                    should_retry = Confirm.ask("Do you want to automatically retry the failed runs?", default='y')
+                    should_retry = Confirm.ask(
+                        "Do you want to automatically retry the failed runs?", default='y')
                     if not should_retry:
                         break
             else:
@@ -213,22 +254,24 @@ class BaseSlurmRichLauncher(Launcher):
             raise RuntimeError(f"{len(results_failed)} jobs failed")
         return results_completed
 
-    
     def execute_jobs(self, executor, job_idx, job_overrides, job_params: List[Any], common_overrides, le_mode=False) -> List[JobReturn]:
         jobs = executor.map_array(self, *zip(*job_params))
         from ._slurm_watcher import ExtendedSlurmInfoWatcher
-        watcher = ExtendedSlurmInfoWatcher() # use the same watcher for all jobs to avoid multiple sacct calls
+        # use the same watcher for all jobs to avoid multiple sacct calls
+        watcher = ExtendedSlurmInfoWatcher()
         for job in jobs:
             job.watcher = watcher
-        atexit.register(lambda: print("\x1b[?25h"))  
-        sleep(1) # if the SLURM IDs have been reset, submitit finds old runs if the new are not started
+        atexit.register(lambda: print("\x1b[?25h"))
+        # if the SLURM IDs have been reset, submitit finds old runs if the new are not started
+        sleep(1)
 
         from ._progress_handler import InteractiveProgressHandler
 
         progress_handler = InteractiveProgressHandler(le_mode=le_mode)
 
         try:
-            progress_handler.loop(job_idx, jobs, job_overrides, slurm_query_interval_s=self.params["slurm_query_interval_s"], common_overrides=common_overrides)
+            progress_handler.loop(job_idx, jobs, job_overrides,
+                                  slurm_query_interval_s=self.params["slurm_query_interval_s"], common_overrides=common_overrides)
         except KeyboardInterrupt:
             progress_handler.live.stop()
             ask_cancel_jobs(jobs)
