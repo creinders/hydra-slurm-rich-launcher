@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hydra-slurm-rich-launcher"
-version = "1.1.0"
+version = "1.1.1"
 description = "A rich, visual interface for easily starting and monitoring your Hydra applications on SLURM clusters"
 authors = [
     "Christoph Reinders <reinders@tnt.uni-hannover.de>",
