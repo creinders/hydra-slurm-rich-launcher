@@ -137,7 +137,8 @@ class BaseSlurmRichLauncher(Launcher):
         init_params = {"folder": self.params["submitit_folder"]}
         specific_init_keys = {"max_num_timeout"}
         additional_keys = ["slurm_query_interval_s", "filter_job_ids",
-                           "max_retries", "retry_strategy", "le_mode"]
+                           "exclude_job_ids", "max_retries", "retry_strategy",
+                           "le_mode"]
 
         init_params.update(
             **{
